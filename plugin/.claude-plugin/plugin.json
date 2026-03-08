@@ -1,0 +1,7 @@
+{
+  "name": "open-uplift",
+  "version": "0.1.0",
+  "description": "Engineering uplift measurement — telemetry collection and voluntary self-reports for Claude Code sessions",
+  "author": "Open Uplift",
+  "homepage": "https://github.com/chrisharig/open-uplift"
+}

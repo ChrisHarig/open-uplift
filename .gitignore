@@ -1,0 +1,53 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+*.egg
+dist/
+build/
+.venv/
+.pytest_cache/
+.ruff_cache/
+htmlcov/
+coverage/
+.coverage
+
+# Node
+node_modules/
+dashboard/dist/
+desktop/
+
+# Internal docs
+question-drafts.md
+scaffold-expansion-plan.md
+plan.md
+CLAUDE.md
+SECURITY.md
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Claude Code
+.claude/
+
+# Environment & secrets
+.env
+.env.*
+*.keyfile
+
+# Logs
+*.log
+
+# Local data
+*.db
+.open-uplift/
+.test-instances/

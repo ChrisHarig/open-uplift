@@ -1,0 +1,54 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "open-uplift"
+version = "0.1.0"
+description = "Engineering uplift measurement — local telemetry dashboard and self-reports"
+authors = [{name = "Chris Harig"}]
+license = {text = "MIT"}
+requires-python = ">=3.10"
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Web Environment",
+    "Framework :: Flask",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Quality Assurance",
+]
+dependencies = [
+    "flask>=3.0",
+    "pydantic>=2.0",
+    "questionary>=2.0.1",
+    "click>=8.0",
+    "anthropic>=0.40",
+    "openai>=1.50",
+    "cryptography>=43.0",
+    "rich>=13.0",
+    "requests>=2.31",
+]
+
+[project.urls]
+Homepage = "https://github.com/ChrisHarig/open-uplift"
+Repository = "https://github.com/ChrisHarig/open-uplift"
+"Bug Tracker" = "https://github.com/ChrisHarig/open-uplift/issues"
+Changelog = "https://github.com/ChrisHarig/open-uplift/blob/main/CHANGELOG.md"
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "pytest-cov", "ruff>=0.4"]
+
+[project.scripts]
+open-uplift = "open_uplift.cli.commands:cli"
+
+[tool.pytest.ini_options]
+markers = [
+    "smoke: lightweight tests for quick iteration",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/open_uplift"]
