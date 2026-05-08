@@ -4,8 +4,9 @@ import sqlite3
 
 import pytest
 
-from open_uplift.db import SCHEMA_SQL, _migrate_db
+from open_uplift.db import SCHEMA_SQL, _seed_default_prompts
 from open_uplift.config import DEFAULT_PRICING
+from open_uplift.surveys import seed_default_config
 
 
 @pytest.fixture
@@ -29,7 +30,8 @@ def db(tmp_path):
              prices["cache_read"], prices["cache_create"]),
         )
 
-    _migrate_db(conn)
+    seed_default_config(conn)
+    _seed_default_prompts(conn)
     conn.commit()
 
     yield conn
