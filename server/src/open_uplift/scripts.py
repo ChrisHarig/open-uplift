@@ -1,8 +1,9 @@
 """Script execution engine: dispatches to evaluator registry.
 
 This module is the backward-compatible entry point. All helpers
-(_get_script_config, _get_prompt, _get_transcript_path, _preprocess_transcript,
-_store_result) remain here and are imported by evaluator implementations.
+(_get_script_config, _get_prompt, _get_tool_config, _get_transcript_path,
+_preprocess_transcript, _store_result) remain here and are imported by
+evaluator implementations.
 """
 
 import json
@@ -53,38 +54,18 @@ def _get_script_config(db: sqlite3.Connection) -> dict:
     row = db.execute("SELECT value FROM config WHERE key = 'script_config'").fetchone()
     if row:
         return json.loads(row["value"])
-    # Fall back to legacy flat llm_config and convert
-    legacy = db.execute("SELECT value FROM config WHERE key = 'llm_config'").fetchone()
-    if legacy:
-        flat = json.loads(legacy["value"])
-        return {
-            "compaction": {
-                "provider": flat.get("compaction_provider", "anthropic"),
-                "model": flat.get("compaction_model", "claude-haiku-4-5-20251001"),
-                "prompt_id": flat.get("compaction_prompt_id", "compaction-default"),
-            },
-            "judge": {
-                "provider": flat.get("judge_provider", "anthropic"),
-                "model": flat.get("judge_model", "claude-sonnet-4-6"),
-                "prompt_id": flat.get("judge_prompt_id", "judge-default"),
-            },
-        }
     return {
         "compaction": {
             "provider": "anthropic",
             "model": "claude-haiku-4-5-20251001",
-            "prompt_id": "compaction-default",
+            "prompt_id": "compaction-amy",
         },
         "judge": {
             "provider": "anthropic",
-            "model": "claude-sonnet-4-6",
-            "prompt_id": "judge-default",
+            "model": "claude-sonnet-4-5-20250929",
+            "prompt_id": "judge-amy",
         },
     }
-
-
-# Backward-compat alias
-_get_llm_config = _get_script_config
 
 
 def _get_prompt(db: sqlite3.Connection, prompt_id: str) -> str:
@@ -138,6 +119,20 @@ def _build_prompt_with_schema(db: sqlite3.Connection, prompt_id: str) -> str:
     lines.append("Respond with valid JSON only. No markdown fences, no extra text.")
 
     return system_prompt + "\n" + "\n".join(lines)
+
+
+def _get_tool_config(db: sqlite3.Connection, prompt_id: str) -> dict | None:
+    """Get the tool-use config for a prompt, if any.
+
+    Returns a dict with keys tool_name, tool_description, input_schema — or None
+    if the prompt is text-only (no tool-use).
+    """
+    row = db.execute(
+        "SELECT tool_config FROM prompts WHERE prompt_id = ?", (prompt_id,)
+    ).fetchone()
+    if not row or not row["tool_config"]:
+        return None
+    return json.loads(row["tool_config"])
 
 
 def _get_output_schema(db: sqlite3.Connection, prompt_id: str) -> list[dict] | None:
@@ -240,6 +235,158 @@ def _preprocess_transcript(transcript_data: dict) -> str:
                 if result:
                     lines.append(f"  Result: {result}")
     return "\n".join(lines)
+
+
+# Tools that produce code diffs the judge must see verbatim. Matches METR's
+# "preserving code diffs" rule from the methodology section.
+_DIFF_TOOLS = {"Edit", "Write", "MultiEdit", "NotebookEdit", "Update"}
+
+
+def _render_assistant_blocks(entry: dict) -> str:
+    """Render one assistant entry's blocks into a single text segment.
+
+    Used as input to the per-turn summarizer — non-diff tool inputs and results
+    are truncated to keep the summarizer focused on the narrative. Code diffs
+    (Edit/Write/etc.) are kept verbatim so the summarizer's narrative still
+    reflects what was actually changed.
+    """
+    ts = entry.get("timestamp", "")[:19]
+    parts = [f"[{ts}] ASSISTANT TURN"]
+    for block in entry.get("blocks", []):
+        if block["type"] == "text":
+            text = block["text"]
+            if len(text) > 1500:
+                text = text[:1500] + "..."
+            parts.append(f"TEXT: {text}")
+        elif block["type"] == "tool_use":
+            tool = block.get("tool_name", "unknown")
+            raw_input = block.get("input", {})
+            inp = json.dumps(raw_input)
+            if tool not in _DIFF_TOOLS and len(inp) > 400:
+                inp = inp[:400] + "..."
+            result = block.get("result", "")
+            if result and tool not in _DIFF_TOOLS and len(result) > 400:
+                result = result[:400] + "..."
+            is_error = " [ERROR]" if block.get("is_error") else ""
+            parts.append(f"TOOL {tool}({inp}){is_error}")
+            if result:
+                parts.append(f"  RESULT: {result}")
+    return "\n".join(parts)
+
+
+def _extract_code_diffs(entry: dict) -> list[str]:
+    """Return verbatim renderings of any Edit/Write/MultiEdit calls in this turn.
+
+    Each diff is a multi-line string ready to be embedded in the final compacted
+    transcript. Returns an empty list if the turn has no code-diff tools.
+    """
+    diffs: list[str] = []
+    for block in entry.get("blocks", []):
+        if block.get("type") != "tool_use":
+            continue
+        tool = block.get("tool_name", "")
+        if tool not in _DIFF_TOOLS:
+            continue
+        inp = block.get("input", {}) or {}
+        path = inp.get("file_path") or inp.get("notebook_path") or "<unknown>"
+        is_error = " [ERROR]" if block.get("is_error") else ""
+        if tool == "Edit":
+            old = inp.get("old_string", "")
+            new = inp.get("new_string", "")
+            replace_all = inp.get("replace_all")
+            header = f"--- {tool} {path}{is_error}"
+            if replace_all:
+                header += " (replace_all)"
+            diffs.append(f"{header}\n--- old\n{old}\n--- new\n{new}")
+        elif tool == "Write":
+            content = inp.get("content", "")
+            diffs.append(f"--- {tool} {path}{is_error}\n--- content\n{content}")
+        elif tool == "MultiEdit":
+            edits = inp.get("edits", []) or []
+            edit_blocks = []
+            for i, e in enumerate(edits):
+                edit_blocks.append(
+                    f"  edit[{i}]:\n  --- old\n{e.get('old_string', '')}\n  --- new\n{e.get('new_string', '')}"
+                )
+            diffs.append(f"--- {tool} {path}{is_error}\n" + "\n".join(edit_blocks))
+        elif tool == "NotebookEdit":
+            content = inp.get("new_source", "") or inp.get("content", "")
+            diffs.append(f"--- {tool} {path}{is_error}\n--- new_source\n{content}")
+        else:
+            diffs.append(f"--- {tool} {path}{is_error}\n{json.dumps(inp)}")
+    return diffs
+
+
+def _render_user_text(entry: dict) -> str:
+    """Render a user entry verbatim — no truncation, no summarization."""
+    ts = entry.get("timestamp", "")[:19]
+    text_parts = [b["text"] for b in entry.get("blocks", []) if b["type"] == "text"]
+    body = "\n".join(text_parts).strip()
+    if not body:
+        return ""
+    return f"[{ts}] USER: {body}"
+
+
+def _segment_transcript_by_turn(transcript_data: dict) -> list[dict]:
+    """Segment a parsed transcript into per-turn chunks for compaction.
+
+    Each chunk is {"user_text": str, "assistant_text": str | None,
+    "code_diffs": list[str]}. user_text and code_diffs are kept verbatim in the
+    final compacted output (METR: "preserving code diffs"). assistant_text is
+    what gets summarized by the per-turn LLM call.
+    """
+    entries = transcript_data.get("transcript", [])
+    chunks: list[dict] = []
+    current_user_text: str | None = None
+    current_assistant_parts: list[str] = []
+    current_diffs: list[str] = []
+    leading_assistant_parts: list[str] = []
+    leading_diffs: list[str] = []
+
+    def flush():
+        nonlocal current_user_text, current_assistant_parts, current_diffs
+        if current_user_text is None and not current_assistant_parts and not current_diffs:
+            return
+        chunks.append({
+            "user_text": current_user_text or "",
+            "assistant_text": "\n".join(current_assistant_parts) if current_assistant_parts else None,
+            "code_diffs": list(current_diffs),
+        })
+        current_user_text = None
+        current_assistant_parts = []
+        current_diffs = []
+
+    for entry in entries:
+        if entry["role"] == "user":
+            user_rendered = _render_user_text(entry)
+            if not user_rendered:
+                continue
+            if (leading_assistant_parts or leading_diffs) and not chunks and current_user_text is None:
+                current_assistant_parts.extend(leading_assistant_parts)
+                current_diffs.extend(leading_diffs)
+                leading_assistant_parts = []
+                leading_diffs = []
+            flush()
+            current_user_text = user_rendered
+        elif entry["role"] == "assistant":
+            rendered = _render_assistant_blocks(entry)
+            diffs = _extract_code_diffs(entry)
+            if current_user_text is None and not chunks:
+                leading_assistant_parts.append(rendered)
+                leading_diffs.extend(diffs)
+            else:
+                current_assistant_parts.append(rendered)
+                current_diffs.extend(diffs)
+    flush()
+
+    if not chunks and (leading_assistant_parts or leading_diffs):
+        chunks.append({
+            "user_text": "[SESSION START — no user message in transcript]",
+            "assistant_text": "\n".join(leading_assistant_parts) if leading_assistant_parts else None,
+            "code_diffs": leading_diffs,
+        })
+
+    return chunks
 
 
 def _build_continuation_context(db: sqlite3.Connection, session_id: str) -> str:

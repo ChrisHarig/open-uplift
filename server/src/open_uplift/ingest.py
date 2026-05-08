@@ -1,11 +1,43 @@
 import logging
 import sqlite3
 from datetime import datetime, timezone
+from pathlib import Path
 
 from open_uplift.db import get_db
 from open_uplift.providers import get_all_providers
 
 logger = logging.getLogger(__name__)
+
+
+def _prune_dead_transcripts(db: sqlite3.Connection) -> dict:
+    """Drop ingest_log + session rows for transcripts whose JSONL file is gone.
+
+    Sessions that still have a completed judge result are preserved (so historic
+    uplift numbers don't disappear); only their dead ingest_log row is removed.
+    Sessions with no judged result are deleted outright along with their
+    messages and any error-status script_results rows.
+    """
+    rows = db.execute("SELECT file_path FROM ingest_log").fetchall()
+    dead_paths = [r["file_path"] for r in rows if not Path(r["file_path"]).is_file()]
+    if not dead_paths:
+        return {"deleted_sessions": 0, "deleted_ingest_rows": 0}
+
+    deleted_sessions = 0
+    for path in dead_paths:
+        sid = Path(path).stem
+        has_judge = db.execute(
+            "SELECT 1 FROM script_results WHERE session_id=? AND script_id='llm-time-estimate' AND status='completed'",
+            (sid,),
+        ).fetchone()
+        if not has_judge:
+            db.execute("DELETE FROM messages WHERE session_id=?", (sid,))
+            db.execute("DELETE FROM script_results WHERE session_id=?", (sid,))
+            db.execute("DELETE FROM judge_outputs WHERE session_id=?", (sid,))
+            db.execute("DELETE FROM uplift_outputs WHERE session_id=?", (sid,))
+            db.execute("DELETE FROM sessions WHERE session_id=?", (sid,))
+            deleted_sessions += 1
+        db.execute("DELETE FROM ingest_log WHERE file_path=?", (path,))
+    return {"deleted_sessions": deleted_sessions, "deleted_ingest_rows": len(dead_paths)}
 
 
 def calculate_cost(
@@ -36,9 +68,18 @@ def calculate_cost(
 
 def sync_all() -> dict:
     """Ingest new data from all providers. Returns stats."""
-    stats = {"sessions_new": 0, "sessions_updated": 0, "messages_added": 0}
+    stats = {"sessions_new": 0, "sessions_updated": 0, "messages_added": 0,
+             "ghosts_pruned": 0}
 
     with get_db() as db:
+        prune = _prune_dead_transcripts(db)
+        stats["ghosts_pruned"] = prune["deleted_sessions"]
+        if prune["deleted_ingest_rows"]:
+            logger.info(
+                "Pruned %d dead ingest_log rows (%d ghost sessions deleted)",
+                prune["deleted_ingest_rows"], prune["deleted_sessions"],
+            )
+
         for provider in get_all_providers():
             for file_path in provider.discover_session_files():
                 path_str = str(file_path)

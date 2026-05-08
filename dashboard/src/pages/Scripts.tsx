@@ -133,11 +133,15 @@ export default function Scripts() {
   return (
     <div>
       <h2 className="page-title">Judge</h2>
-      <p style={{ color: "var(--text-muted)", fontSize: 13, marginBottom: 24 }}>
+      <p style={{ color: "var(--text-muted)", fontSize: 13, marginBottom: 8 }}>
         Configure the LLM judge that estimates time-without-AI for your sessions.
         {!hasKeys && (
           <span style={{ color: "#dc2626" }}> Add API keys in Settings first.</span>
         )}
+      </p>
+      <p style={{ color: "var(--text-muted)", fontSize: 12, marginBottom: 24, fontStyle: "italic" }}>
+        The default Amy-style prompts use tool-calling and only work with <strong>anthropic</strong> or <strong>openai</strong> providers.
+        Other providers (OpenRouter, etc.) need a non-tool prompt — pick one without "Amy" in the name.
       </p>
 
       {/* Judge + Compaction side by side */}

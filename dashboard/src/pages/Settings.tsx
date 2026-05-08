@@ -14,6 +14,8 @@ export default function Settings() {
   const [newKeyValue, setNewKeyValue] = useState("");
   const [addingKey, setAddingKey] = useState(false);
   const [testResult, setTestResult] = useState<string | null>(null);
+  const [costResults, setCostResults] = useState<Record<string, string>>({});
+  const [checkingCost, setCheckingCost] = useState<Record<string, boolean>>({});
 
   // Scaffolds
   const [scaffolds, setScaffolds] = useState<Scaffold[]>([]);
@@ -86,6 +88,30 @@ export default function Settings() {
   const handleDeleteKey = async (provider: string, keyName: string) => {
     await api.deleteApiKey(provider, keyName);
     api.apiKeys().then(setApiKeys);
+  };
+
+  const handleCheckCost = async (provider: string, keyName: string) => {
+    const id = `${provider}-${keyName}`;
+    setCheckingCost((m) => ({ ...m, [id]: true }));
+    try {
+      const res = await api.apiKeyCost(provider, keyName);
+      let summary: string;
+      if (res.error) {
+        summary = `Error: ${res.error}`;
+      } else if (res.spend_usd !== undefined || res.balance_usd !== undefined) {
+        const parts: string[] = [];
+        if (res.balance_usd !== undefined) parts.push(`balance $${res.balance_usd.toFixed(2)}`);
+        if (res.spend_usd !== undefined) parts.push(`spent $${res.spend_usd.toFixed(2)}${res.window_days ? ` / ${res.window_days}d` : ""}`);
+        summary = parts.join(", ");
+      } else {
+        summary = res.note || "No data returned";
+      }
+      setCostResults((m) => ({ ...m, [id]: summary }));
+    } catch (e) {
+      setCostResults((m) => ({ ...m, [id]: `Error: ${(e as Error).message}` }));
+    } finally {
+      setCheckingCost((m) => ({ ...m, [id]: false }));
+    }
   };
 
   const handleAddScaffold = async () => {
@@ -274,8 +300,11 @@ export default function Settings() {
                 <tr><th>Provider</th><th>Last Used</th><th></th></tr>
               </thead>
               <tbody>
-                {apiKeys.map((k) => (
-                  <tr key={`${k.provider}-${k.key_name}`}>
+                {apiKeys.map((k) => {
+                  const id = `${k.provider}-${k.key_name}`;
+                  const supportsCost = (k.provider === "anthropic" || k.provider === "openai") && k.source !== "env";
+                  return (
+                  <tr key={id}>
                     <td>
                       {k.provider}
                       {k.source === "env" && (
@@ -284,14 +313,31 @@ export default function Settings() {
                     </td>
                     <td>{k.source === "env" ? "From environment" : k.last_used_at ? new Date(k.last_used_at).toLocaleDateString() : "Never"}</td>
                     <td>
-                      {k.source !== "env" && (
-                        <button className="btn btn-secondary" style={{ padding: "2px 6px", fontSize: 10 }} onClick={() => handleDeleteKey(k.provider, k.key_name)}>
-                          Delete
-                        </button>
-                      )}
+                      <div style={{ display: "flex", gap: 4, alignItems: "center", flexWrap: "wrap" }}>
+                        {supportsCost && (
+                          <button
+                            className="btn btn-secondary"
+                            style={{ padding: "2px 6px", fontSize: 10 }}
+                            onClick={() => handleCheckCost(k.provider, k.key_name)}
+                            disabled={checkingCost[id]}
+                            title="Look up balance / spend (admin keys only)"
+                          >
+                            {checkingCost[id] ? "Checking..." : "Check cost"}
+                          </button>
+                        )}
+                        {k.source !== "env" && (
+                          <button className="btn btn-secondary" style={{ padding: "2px 6px", fontSize: 10 }} onClick={() => handleDeleteKey(k.provider, k.key_name)}>
+                            Delete
+                          </button>
+                        )}
+                        {costResults[id] && (
+                          <span style={{ fontSize: 10, color: "var(--text-muted)" }}>{costResults[id]}</span>
+                        )}
+                      </div>
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           )}

@@ -12,6 +12,7 @@ import {
   CartesianGrid,
 } from "recharts";
 import { api, fmt, TokensByModel, TokensBySource, TokensTimeseries } from "../api.ts";
+import { CHART } from "../chartColors";
 
 export default function Tokens() {
   const [tokensTS, setTokensTS] = useState<TokensTimeseries[]>([]);
@@ -102,7 +103,7 @@ export default function Tokens() {
                 total: d.input_tokens + d.output_tokens + d.cache_read + d.cache_create,
               }))}
             >
-              <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />
+              <CartesianGrid strokeDasharray="3 3" stroke={CHART.grid} />
               <XAxis
                 dataKey="day"
                 tick={{ fill: "#666666", fontSize: 11 }}
@@ -137,7 +138,7 @@ export default function Tokens() {
               <Line
                 type="monotone"
                 dataKey="total"
-                stroke="#111111"
+                stroke={CHART.ink}
                 strokeWidth={2}
                 dot={false}
                 name="Total Tokens"
@@ -157,7 +158,7 @@ export default function Tokens() {
               layout="vertical"
               margin={{ left: 120 }}
             >
-              <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />
+              <CartesianGrid strokeDasharray="3 3" stroke={CHART.grid} />
               <XAxis
                 type="number"
                 tick={{ fill: "#666666", fontSize: 11 }}
@@ -173,7 +174,7 @@ export default function Tokens() {
                 contentStyle={{ background: "#ffffff", border: "1px solid #e0e0e0" }}
                 formatter={(v: number) => [fmt(v), "Tokens"]}
               />
-              <Bar dataKey="tokens" fill="#111111" radius={[0, 4, 4, 0]} />
+              <Bar dataKey="tokens" fill={CHART.ink} radius={[0, 4, 4, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </div>
@@ -189,7 +190,7 @@ export default function Tokens() {
               layout="vertical"
               margin={{ left: 120 }}
             >
-              <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />
+              <CartesianGrid strokeDasharray="3 3" stroke={CHART.grid} />
               <XAxis
                 type="number"
                 tick={{ fill: "#666666", fontSize: 11 }}
@@ -205,7 +206,7 @@ export default function Tokens() {
                 contentStyle={{ background: "#ffffff", border: "1px solid #e0e0e0" }}
                 formatter={(v: number) => [fmt(v), "Tokens"]}
               />
-              <Bar dataKey="tokens" fill="#111111" radius={[0, 4, 4, 0]} />
+              <Bar dataKey="tokens" fill={CHART.ink} radius={[0, 4, 4, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </div>

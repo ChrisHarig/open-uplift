@@ -9,6 +9,7 @@ import {
   CartesianGrid,
   Tooltip,
 } from "recharts";
+import { CHART } from "../chartColors";
 import { api, fmt, OrgDetail, OrgAnalytics, OrgMembership, OrgHubInfo, OrgRemoteAggregate, UpliftDistribution, UpliftByGroup, Project, UnpushedSession, SharingConfig } from "../api.ts";
 import UpliftDistributionChart from "../components/UpliftDistributionChart.tsx";
 import InfoTip from "../components/InfoTip.tsx";
@@ -453,11 +454,11 @@ export default function OrganizationDetail() {
               <h3>Uplift by Member</h3>
               <ResponsiveContainer width="100%" height={Math.max(200, mergedUpliftByMember.length * 30)}>
                 <BarChart data={mergedUpliftByMember} layout="vertical">
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />
+                  <CartesianGrid strokeDasharray="3 3" stroke={CHART.grid} />
                   <XAxis type="number" tick={{ fill: "#666", fontSize: 11 }} tickFormatter={(v) => `${v}x`} />
                   <YAxis dataKey="member_name" type="category" tick={{ fill: "#666", fontSize: 11 }} width={120} />
                   <Tooltip contentStyle={{ background: "#fff", border: "1px solid #e0e0e0" }} formatter={(v: number) => [`${v}x`, "Avg Uplift"]} />
-                  <Bar dataKey="avg_uplift" fill="#8b5cf6" radius={[0, 4, 4, 0]} />
+                  <Bar dataKey="avg_uplift" fill={CHART.dusk} radius={[0, 4, 4, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -737,11 +738,11 @@ export default function OrganizationDetail() {
           <h3>Uplift by Project</h3>
           <ResponsiveContainer width="100%" height={Math.max(200, byProject.length * 30)}>
             <BarChart data={byProject} layout="vertical">
-              <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />
+              <CartesianGrid strokeDasharray="3 3" stroke={CHART.grid} />
               <XAxis type="number" tick={{ fill: "#666", fontSize: 11 }} tickFormatter={(v) => `${v}x`} />
               <YAxis dataKey="project_name" type="category" tick={{ fill: "#666", fontSize: 11 }} width={120} />
               <Tooltip contentStyle={{ background: "#fff", border: "1px solid #e0e0e0" }} formatter={(v: number) => [`${v}x`, "Avg Uplift"]} />
-              <Bar dataKey="avg_uplift" fill="#3b82f6" radius={[0, 4, 4, 0]} />
+              <Bar dataKey="avg_uplift" fill={CHART.steel} radius={[0, 4, 4, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </div>
@@ -765,14 +766,14 @@ export default function OrganizationDetail() {
             <h3>Uplift by Scaffold</h3>
             <ResponsiveContainer width="100%" height={250}>
               <BarChart data={byScaffold}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />
+                <CartesianGrid strokeDasharray="3 3" stroke={CHART.grid} />
                 <XAxis dataKey="scaffold" tick={{ fill: "#666", fontSize: 11 }} />
                 <YAxis tick={{ fill: "#666", fontSize: 11 }} tickFormatter={(v) => `${v}x`} />
                 <Tooltip
                   contentStyle={{ background: "#fff", border: "1px solid #e0e0e0" }}
                   formatter={(v: number) => [`${v}x`, "Avg Uplift"]}
                 />
-                <Bar dataKey="avg_uplift" fill="#f59e0b" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="avg_uplift" fill={CHART.ochre} radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -783,7 +784,7 @@ export default function OrganizationDetail() {
             <h3>Uplift by Model</h3>
             <ResponsiveContainer width="100%" height={250}>
               <BarChart data={byModel}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />
+                <CartesianGrid strokeDasharray="3 3" stroke={CHART.grid} />
                 <XAxis
                   dataKey="model"
                   tick={{ fill: "#666", fontSize: 11 }}
@@ -794,7 +795,7 @@ export default function OrganizationDetail() {
                   contentStyle={{ background: "#fff", border: "1px solid #e0e0e0" }}
                   formatter={(v: number) => [`${v}x`, "Avg Uplift"]}
                 />
-                <Bar dataKey="avg_uplift" fill="#ec4899" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="avg_uplift" fill={CHART.stone} radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>

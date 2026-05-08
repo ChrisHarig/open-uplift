@@ -46,11 +46,6 @@ from open_uplift.surveys import (
 def create_app() -> Flask:
     app = Flask(__name__, static_folder=None)
 
-    # Ensure all judged sessions have structured EAV entries in judge_outputs
-    from open_uplift.evaluators.judge import backfill_judge_outputs
-    with get_db() as db:
-        backfill_judge_outputs(db)
-
     # --- API routes ---
 
     @app.route("/api/health")
@@ -1132,6 +1127,29 @@ def create_app() -> Flask:
             return jsonify({"error": "Key not found"}), 404
         return jsonify({"status": "deleted"})
 
+    @app.route("/api/api-keys/<provider>/<key_name>/cost")
+    def api_keys_cost(provider, key_name):
+        """Best-effort cost lookup for a stored API key.
+
+        Returns: {balance_usd?, spend_usd?, currency?, error?, note?}
+
+        Anthropic and OpenAI publish billing/credit data only on admin-scoped
+        keys, so most regular API keys will get a "not accessible" note rather
+        than a hard failure.
+        """
+        from open_uplift.keystore import get_api_key as _get_key
+        with get_db() as db:
+            api_key_val = _get_key(db, provider, key_name)
+        if not api_key_val:
+            return jsonify({"error": "Key not found"}), 404
+
+        try:
+            from open_uplift.cost_check import fetch_key_cost
+            data = fetch_key_cost(provider, api_key_val)
+            return jsonify(data)
+        except Exception as e:
+            return jsonify({"error": str(e)})
+
     @app.route("/api/api-keys/test", methods=["POST"])
     def api_keys_test():
         """Test an API key by making a lightweight LLM call.
@@ -1166,66 +1184,19 @@ def create_app() -> Flask:
             "compaction": {
                 "provider": "anthropic",
                 "model": "claude-haiku-4-5-20251001",
-                "prompt_id": "compaction-default",
+                "prompt_id": "compaction-amy",
             },
             "judge": {
                 "provider": "anthropic",
-                "model": "claude-sonnet-4-6",
-                "prompt_id": "judge-default",
-                "include_profile": True,
+                "model": "claude-sonnet-4-5-20250929",
+                "prompt_id": "judge-amy",
+                "include_profile": False,
             },
         }
 
     def _read_script_config(db):
-        """Read nested script_config, falling back to legacy llm_config."""
         cfg = _get_config(db, "script_config")
-        if cfg:
-            return cfg
-        flat = _get_config(db, "llm_config")
-        if flat:
-            return {
-                "compaction": {
-                    "provider": flat.get("compaction_provider", "anthropic"),
-                    "model": flat.get("compaction_model", "claude-haiku-4-5-20251001"),
-                    "prompt_id": flat.get("compaction_prompt_id", "compaction-default"),
-                },
-                "judge": {
-                    "provider": flat.get("judge_provider", "anthropic"),
-                    "model": flat.get("judge_model", "claude-sonnet-4-6"),
-                    "prompt_id": flat.get("judge_prompt_id", "judge-default"),
-                },
-            }
-        return _default_script_config()
-
-    def _nested_to_flat(nested):
-        """Convert nested script_config to flat llm_config format."""
-        c = nested.get("compaction", {})
-        j = nested.get("judge", {})
-        return {
-            "judge_provider": j.get("provider", "anthropic"),
-            "judge_model": j.get("model", "claude-sonnet-4-6"),
-            "judge_prompt_id": j.get("prompt_id", "judge-default"),
-            "judge_include_profile": j.get("include_profile", True),
-            "compaction_provider": c.get("provider", "anthropic"),
-            "compaction_model": c.get("model", "claude-haiku-4-5-20251001"),
-            "compaction_prompt_id": c.get("prompt_id", "compaction-default"),
-        }
-
-    def _flat_to_nested(flat):
-        """Convert flat llm_config to nested script_config format."""
-        return {
-            "compaction": {
-                "provider": flat.get("compaction_provider", "anthropic"),
-                "model": flat.get("compaction_model", "claude-haiku-4-5-20251001"),
-                "prompt_id": flat.get("compaction_prompt_id", "compaction-default"),
-            },
-            "judge": {
-                "provider": flat.get("judge_provider", "anthropic"),
-                "model": flat.get("judge_model", "claude-sonnet-4-6"),
-                "prompt_id": flat.get("judge_prompt_id", "judge-default"),
-                "include_profile": flat.get("judge_include_profile", True),
-            },
-        }
+        return cfg if cfg else _default_script_config()
 
     @app.route("/api/script-config")
     def script_config_get():
@@ -1250,37 +1221,6 @@ def create_app() -> Flask:
         with get_db() as db:
             _set_config(db, "script_config", data)
         return jsonify(data)
-
-    # --- Legacy llm-config endpoints (backward compat) ---
-
-    @app.route("/api/llm-config")
-    def llm_config_get():
-        """Get script config in legacy flat format (backward compat).
-
-        Returns: {judge_provider, judge_model, compaction_provider, ...}
-        """
-        with get_db() as db:
-            nested = _read_script_config(db)
-        return jsonify(_nested_to_flat(nested))
-
-    @app.route("/api/llm-config", methods=["PUT"])
-    def llm_config_set():
-        """Update script config via legacy flat format (backward compat).
-
-        Body: flat key-value pairs (e.g. {judge_provider, judge_model, ...})
-        Returns: merged flat config
-        """
-        data = request.get_json()
-        if not data:
-            return jsonify({"error": "JSON body required"}), 400
-        with get_db() as db:
-            # Merge incoming flat data with existing config
-            nested = _read_script_config(db)
-            current_flat = _nested_to_flat(nested)
-            current_flat.update(data)
-            new_nested = _flat_to_nested(current_flat)
-            _set_config(db, "script_config", new_nested)
-        return jsonify(current_flat)
 
     # --- Scaffolds (Phase 2) ---
 

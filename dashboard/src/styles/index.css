@@ -662,7 +662,60 @@ select:focus {
   margin: 0;
 }
 
-/* Transcript view toggle (Raw / Compacted segmented button) */
+/* Every direct child of the transcript-controls row is normalized to 32px so
+   the segmented Full/Compacted toggle, the Prompt button, and the Show
+   thinking / Show tool details switches all share a baseline height. */
+.transcript-controls > .btn,
+.transcript-controls .transcript-view-toggle .btn,
+.transcript-controls .toggle-row-inline {
+  height: 32px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+}
+
+.toggle-row-inline {
+  margin-bottom: 0;
+  gap: 8px;
+}
+
+/* Compaction status tag + divider above the compacted transcript body. */
+.compaction-status-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.compaction-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  border: 1px solid var(--border);
+}
+
+.compaction-tag-fresh {
+  color: var(--text-muted);
+  background: var(--bg-hover);
+}
+
+.compaction-tag-stale {
+  color: var(--text);
+  background: transparent;
+  border-color: var(--text);
+}
+
+.compaction-divider {
+  border-top: 1px solid var(--border);
+  margin: 0 0 16px 0;
+}
+
+/* Transcript view toggle (Full / Compacted segmented button) */
 .transcript-view-toggle {
   display: inline-flex;
 }

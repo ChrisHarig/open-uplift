@@ -9,7 +9,7 @@ from unittest.mock import patch
 import pytest
 from click.testing import CliRunner
 
-from open_uplift.db import SCHEMA_SQL, _migrate_db, DEFAULT_PROMPTS
+from open_uplift.db import SCHEMA_SQL, _seed_default_prompts, DEFAULT_PROMPTS
 from open_uplift.config import DEFAULT_PRICING
 from open_uplift.llm_client import LLMResponse
 
@@ -40,8 +40,10 @@ def db(tmp_path, monkeypatch):
              prices["cache_read"], prices["cache_create"]),
         )
 
-    # Run migrations (seeds surveys, questions, prompts)
-    _migrate_db(conn)
+    # Seed config (surveys, questions) + default prompts
+    from open_uplift.surveys import seed_default_config
+    seed_default_config(conn)
+    _seed_default_prompts(conn)
 
     conn.commit()
 
@@ -315,7 +317,12 @@ def sample_prompt(db):
 
 @pytest.fixture
 def mock_llm(monkeypatch):
-    """Monkeypatch LLMClient.complete to return canned responses."""
+    """Monkeypatch LLMClient.complete and complete_with_tool to return canned responses.
+
+    Default canned content matches the judge schema (tag_difficulty tool input). The
+    compactor's per-turn calls re-use the same path; their JSON gets parsed but the
+    fields it doesn't recognise are simply ignored downstream.
+    """
     canned = LLMResponse(
         content='{"success": true, "tasks": [{"description": "Fix login bug", "succeeded": true, "estimated_minutes_without_ai": 30}], "total_minutes_without_ai": 30, "confidence": "medium", "reasoning": "Simple bug fix"}',
         input_tokens=1000,
@@ -323,11 +330,24 @@ def mock_llm(monkeypatch):
         model="claude-sonnet-4-6",
         cost_usd=0.006,
     )
+    compaction_canned = LLMResponse(
+        content='{"actions": "Investigated the login bug and proposed a fix", "outcome": "Wrote code to fix login bug"}',
+        input_tokens=200,
+        output_tokens=50,
+        model="claude-haiku-4-5-20251001",
+        cost_usd=0.0005,
+    )
 
     def fake_complete(self, system_prompt, user_prompt, **kwargs):
         return canned
 
+    def fake_complete_with_tool(self, system_prompt, user_prompt, tool_name, **kwargs):
+        if tool_name == "summarize_turn":
+            return compaction_canned
+        return canned
+
     monkeypatch.setattr("open_uplift.llm_client.LLMClient.complete", fake_complete)
+    monkeypatch.setattr("open_uplift.llm_client.LLMClient.complete_with_tool", fake_complete_with_tool)
     return canned
 
 

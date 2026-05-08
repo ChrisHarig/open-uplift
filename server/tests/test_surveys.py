@@ -118,12 +118,3 @@ def test_uplift_output_stored_in_db(db, sample_session):
     assert row["uplift_factor"] == 4.0
 
 
-def test_legacy_self_report_created(db, sample_session):
-    """submit_survey_response also inserts into legacy self_reports table."""
-    submit_survey_response(db, sample_session, "default", answers={"human-est": 3.0})
-
-    row = db.execute(
-        "SELECT * FROM self_reports WHERE session_id = ?", (sample_session,)
-    ).fetchone()
-    assert row is not None
-    assert row["speedup_factor"] == 3.0

@@ -65,32 +65,6 @@ def _store_judge_outputs(
         )
 
 
-def backfill_judge_outputs(db: sqlite3.Connection) -> int:
-    """Backfill judge_outputs for sessions judged before _store_judge_outputs existed."""
-    rows = db.execute(
-        """SELECT sr.session_id, sr.result, sr.prompt_id
-           FROM script_results sr
-           WHERE sr.script_id = 'llm-time-estimate' AND sr.status = 'completed'
-           AND NOT EXISTS (
-               SELECT 1 FROM judge_outputs jo WHERE jo.session_id = sr.session_id
-           )"""
-    ).fetchall()
-    count = 0
-    for row in rows:
-        try:
-            result = json.loads(row["result"])
-            if result.get("parse_error"):
-                continue
-            _store_judge_outputs(db, row["session_id"], result, row["prompt_id"], None)
-            count += 1
-        except Exception:
-            logger.warning("Failed to backfill judge outputs for session %s", row["session_id"], exc_info=True)
-    if count > 0:
-        db.commit()
-        logger.info("Backfilled judge_outputs for %d sessions", count)
-    return count
-
-
 class JudgeEvaluator(Evaluator):
     evaluator_id = "llm-time-estimate"
     name = "LLM Time Estimate"
@@ -140,24 +114,29 @@ class JudgeEvaluator(Evaluator):
                 value_type="numeric", error=error,
             )
 
-        # Prepend developer profile context if enabled and non-empty
-        if judge.get("include_profile", True):
-            profile = _get_config(db, "user_profile")
-            if profile and profile.get("experience_description"):
-                profile_text = f"The developer completing this task describes themselves as:\n{profile['experience_description']}\n"
-                user_prompt = profile_text + "\n---\n\n" + user_prompt
+        # Tool-use prompts (Amy methodology) are sent verbatim — no profile or
+        # continuation-context injection. Legacy text prompts keep both.
+        is_tool_prompt = bool(_scripts._get_tool_config(db, prompt_id))
 
-        # Prepend continuation context if this is a continuation session
-        context = _scripts._build_continuation_context(db, session_id)
-        if context:
-            user_prompt = context + "\n\n" + user_prompt
+        if not is_tool_prompt:
+            if judge.get("include_profile", True):
+                profile = _get_config(db, "user_profile")
+                if profile and profile.get("experience_description"):
+                    profile_text = f"The developer completing this task describes themselves as:\n{profile['experience_description']}\n"
+                    user_prompt = profile_text + "\n---\n\n" + user_prompt
+            context = _scripts._build_continuation_context(db, session_id)
+            if context:
+                user_prompt = context + "\n\n" + user_prompt
 
         provider = judge.get("provider", "anthropic")
         model = judge.get("model", "claude-sonnet-4-6")
 
         try:
-            system_prompt = _scripts._build_prompt_with_schema(db, prompt_id)
             output_schema = _scripts._get_output_schema(db, prompt_id)
+            if is_tool_prompt:
+                system_prompt = _scripts._get_prompt(db, prompt_id)
+            else:
+                system_prompt = _scripts._build_prompt_with_schema(db, prompt_id)
         except Exception as e:
             error = f"Failed to build prompt: {e}"
             _scripts._store_result(db, session_id, self.evaluator_id, "error", None,
@@ -179,27 +158,43 @@ class JudgeEvaluator(Evaluator):
 
         try:
             client = LLMClient(provider, model, api_key)
-            response = client.complete(system_prompt, user_prompt, max_tokens=4096, temperature=0.0)
+            tool_config = _scripts._get_tool_config(db, prompt_id)
 
-            # Parse structured JSON response
-            content = response.content.strip()
-
-            # Extract JSON from fenced code block anywhere in the response
-            import re
-            fence_match = re.search(r"```(?:json)?\s*\n(.*?)```", content, re.DOTALL)
-            if fence_match:
-                content = fence_match.group(1).strip()
-            elif not content.startswith("{"):
-                # No fence — try extracting from first { to last }
-                first_brace = content.find("{")
-                last_brace = content.rfind("}")
-                if first_brace != -1 and last_brace > first_brace:
-                    content = content[first_brace:last_brace + 1]
-
-            try:
-                judge_result = json.loads(content)
-            except json.JSONDecodeError:
-                judge_result = {"raw_response": response.content.strip(), "parse_error": True}
+            if tool_config:
+                # Send the full template as the user message with the placeholder
+                # filled, system prompt empty — model sees the prompt verbatim as
+                # printed in METR's Appendix A.
+                filled = system_prompt.replace("{compressed_transcript}", user_prompt)
+                response = client.complete_with_tool(
+                    system_prompt="",
+                    user_prompt=filled,
+                    tool_name=tool_config["tool_name"],
+                    tool_description=tool_config.get("tool_description", ""),
+                    tool_schema=tool_config["input_schema"],
+                    max_tokens=4096,
+                    temperature=0.0,
+                )
+                # Tool-use returns the tool input as JSON in content; parse directly.
+                try:
+                    judge_result = json.loads(response.content)
+                except json.JSONDecodeError:
+                    judge_result = {"raw_response": response.content.strip(), "parse_error": True}
+            else:
+                response = client.complete(system_prompt, user_prompt, max_tokens=4096, temperature=0.0)
+                content = response.content.strip()
+                import re
+                fence_match = re.search(r"```(?:json)?\s*\n(.*?)```", content, re.DOTALL)
+                if fence_match:
+                    content = fence_match.group(1).strip()
+                elif not content.startswith("{"):
+                    first_brace = content.find("{")
+                    last_brace = content.rfind("}")
+                    if first_brace != -1 and last_brace > first_brace:
+                        content = content[first_brace:last_brace + 1]
+                try:
+                    judge_result = json.loads(content)
+                except json.JSONDecodeError:
+                    judge_result = {"raw_response": response.content.strip(), "parse_error": True}
 
             result = {
                 **judge_result,

@@ -767,6 +767,10 @@ export const api = {
     del<{ status: string }>(`/api-keys/${encodeURIComponent(provider)}/${encodeURIComponent(keyName)}`),
   testApiKey: (provider: string, apiKey: string) =>
     post<{ valid: boolean; error?: string }>("/api-keys/test", { provider, api_key: apiKey }),
+  apiKeyCost: (provider: string, keyName: string) =>
+    get<{ balance_usd?: number; spend_usd?: number; window_days?: number; currency?: string; note?: string; error?: string }>(
+      `/api-keys/${encodeURIComponent(provider)}/${encodeURIComponent(keyName)}/cost`,
+    ),
 
   // Script Config
   getScriptConfig: () => get<ScriptConfig>("/script-config"),

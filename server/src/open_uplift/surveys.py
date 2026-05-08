@@ -235,18 +235,6 @@ def submit_survey_response(
             (session_id, response_id, out["output_id"], out["uplift_factor"], json.dumps(out.get("metadata", {})), now),
         )
 
-    # Also insert into legacy self_reports for backward compat
-    speedup = answers.get("human-est")
-    if speedup is not None:
-        db.execute(
-            """INSERT OR IGNORE INTO self_reports
-               (session_id, tool_source, timestamp, speedup_factor,
-                task_type, complexity, duration_minutes,
-                perceived_speedup_pct, ai_quality_rating, notes)
-               VALUES (?, 'claude_code', ?, ?, '', '', 0, 0, 0, ?)""",
-            (session_id, now, speedup, notes),
-        )
-
     return response_id, outputs
 
 
@@ -298,33 +286,3 @@ def seed_default_config(db: sqlite3.Connection) -> None:
         _set_config(db, "active_survey", DEFAULT_ACTIVE_SURVEY)
 
 
-def backfill_self_reports(db: sqlite3.Connection) -> None:
-    """One-time migration: copy self_reports with speedup_factor into new tables."""
-    if _get_config(db, "backfill_v1_done"):
-        return
-
-    rows = db.execute(
-        "SELECT * FROM self_reports WHERE speedup_factor IS NOT NULL"
-    ).fetchall()
-
-    for row in rows:
-        answers = json.dumps({"human-est": row["speedup_factor"]})
-        db.execute(
-            """INSERT OR IGNORE INTO survey_responses
-               (session_id, survey_id, tool_source, timestamp, answers, notes)
-               VALUES (?, 'survey-1', ?, ?, ?, ?)""",
-            (row["session_id"], row["tool_source"], row["timestamp"], answers, row["notes"] or ""),
-        )
-        resp = db.execute(
-            "SELECT id FROM survey_responses WHERE session_id = ? AND survey_id = 'survey-1'",
-            (row["session_id"],),
-        ).fetchone()
-        if resp:
-            db.execute(
-                """INSERT OR IGNORE INTO uplift_outputs
-                   (session_id, survey_response_id, output_id, uplift_factor, metadata, timestamp)
-                   VALUES (?, ?, 'human-est', ?, '{}', ?)""",
-                (row["session_id"], resp["id"], row["speedup_factor"], row["timestamp"]),
-            )
-
-    _set_config(db, "backfill_v1_done", True)

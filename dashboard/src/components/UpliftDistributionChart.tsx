@@ -8,10 +8,25 @@ import {
   ResponsiveContainer,
   CartesianGrid,
   Cell,
+  LabelList,
 } from "recharts";
+import { CHART } from "../chartColors";
 
-const STORAGE_KEY = "uplift-distribution-edges";
-const DEFAULT_EDGES = [0, 1, 3, 5, 10];
+// v2 cache key — invalidates the older 0/1/3/5/10 saved value so the new
+// 0/1/3/5/7/9 bucketing takes effect for existing users.
+const STORAGE_KEY = "uplift-distribution-edges-v2";
+const DEFAULT_EDGES = [0, 1, 3, 5, 7, 9];
+
+// Bar colors graduate from "warning" (sub-1.0x uplift = AI slower than alone)
+// through neutral mid-range to a deeper good-zone for high-uplift sessions.
+function colorForBucket(lo: number, hi: number | undefined): string {
+  if (hi === 1 && lo === 0) return CHART.brick;        // 0–1x: AI made it slower
+  if (hi === undefined) return CHART.sage;             // open-ended top bucket
+  if (lo >= 7) return CHART.sage;                      // 7–9x
+  if (lo >= 5) return CHART.dusk;                      // 5–7x
+  if (lo >= 3) return CHART.steel;                     // 3–5x
+  return CHART.ochre;                                  // 1–3x (mild positive)
+}
 
 function loadEdges(): number[] {
   try {
@@ -37,7 +52,7 @@ interface Bucket {
 }
 
 function buildBuckets(values: number[], edges: number[]): Bucket[] {
-  const sorted = [...edges].sort((a, b) => a - b);
+  const sorted = [...new Set([...edges].sort((a, b) => a - b))];
   const buckets: Bucket[] = [];
 
   for (let i = 0; i < sorted.length; i++) {
@@ -45,11 +60,10 @@ function buildBuckets(values: number[], edges: number[]): Bucket[] {
     const hi = sorted[i + 1];
     if (hi !== undefined) {
       const count = values.filter((v) => v >= lo && v < hi).length;
-      const color = lo === 0 && hi === 1 ? "#dc2626" : "#3b82f6";
-      buckets.push({ label: `${lo}-${hi}x`, count, color });
+      buckets.push({ label: `${lo}–${hi}x`, count, color: colorForBucket(lo, hi) });
     } else {
       const count = values.filter((v) => v >= lo).length;
-      buckets.push({ label: `${lo}x+`, count, color: "#16a34a" });
+      buckets.push({ label: `${lo}x+`, count, color: colorForBucket(lo, undefined) });
     }
   }
 
@@ -135,16 +149,38 @@ export default function UpliftDistributionChart({ values, failCount, stats }: Pr
           </button>
         </div>
       )}
-      <ResponsiveContainer width="100%" height={250}>
-        <BarChart data={buckets}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />
-          <XAxis dataKey="label" tick={{ fill: "#666", fontSize: 11 }} />
-          <YAxis tick={{ fill: "#666", fontSize: 11 }} />
+      <ResponsiveContainer width="100%" height={280}>
+        <BarChart data={buckets} margin={{ top: 18, right: 12, left: 0, bottom: 4 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke={CHART.grid} vertical={false} />
+          <XAxis
+            dataKey="label"
+            tick={{ fill: CHART.axis, fontSize: 11 }}
+            tickLine={false}
+            axisLine={{ stroke: CHART.grid }}
+          />
+          <YAxis
+            tick={{ fill: CHART.axis, fontSize: 11 }}
+            tickLine={false}
+            axisLine={false}
+            allowDecimals={false}
+          />
           <Tooltip
-            contentStyle={{ background: "#fff", border: "1px solid #e0e0e0" }}
+            cursor={{ fill: "rgba(0,0,0,0.03)" }}
+            contentStyle={{
+              background: "var(--bg-card)",
+              border: `1px solid ${CHART.grid}`,
+              borderRadius: 6,
+              fontSize: 12,
+            }}
             formatter={(v: number) => [v, "Sessions"]}
           />
           <Bar dataKey="count" radius={[4, 4, 0, 0]}>
+            <LabelList
+              dataKey="count"
+              position="top"
+              style={{ fill: CHART.axis, fontSize: 11 }}
+              formatter={(v: number) => (v > 0 ? v : "")}
+            />
             {buckets.map((b, i) => (
               <Cell key={i} fill={b.color} />
             ))}
@@ -152,9 +188,9 @@ export default function UpliftDistributionChart({ values, failCount, stats }: Pr
         </BarChart>
       </ResponsiveContainer>
       <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "var(--text-muted)", marginTop: 8 }}>
-        <span>Avg: {stats.avg}x | Median: {stats.median}x | {values.length} sessions</span>
+        <span>Avg: {stats.avg}x · Median: {stats.median}x · {values.length} sessions</span>
         {failCount > 0 && (
-          <span style={{ color: "#dc2626" }}>
+          <span style={{ color: CHART.brick }}>
             {failCount}/{values.length + failCount} failed
           </span>
         )}

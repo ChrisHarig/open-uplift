@@ -63,12 +63,11 @@ def test_default_surveys_seeded(db):
     assert "default" in surveys
 
 
-def test_migrations_idempotent(db):
-    """Running _migrate_db again should not fail."""
-    from open_uplift.db import _migrate_db
-    _migrate_db(db)  # Should not raise
+def test_schema_idempotent(db):
+    """Re-applying SCHEMA_SQL on an existing DB should be a no-op (CREATE IF NOT EXISTS)."""
+    from open_uplift.db import SCHEMA_SQL
+    db.executescript(SCHEMA_SQL)
     db.commit()
-    # Tables should still exist
     tables = [
         row["name"]
         for row in db.execute(

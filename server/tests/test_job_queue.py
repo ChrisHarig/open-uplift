@@ -153,7 +153,8 @@ class TestRunBatchJob:
         """Create a thread-safe db setup for _run_batch_job tests."""
         import sqlite3
         from contextlib import contextmanager
-        from open_uplift.db import SCHEMA_SQL, _migrate_db, DEFAULT_PRICING
+        from open_uplift.db import SCHEMA_SQL, _seed_default_prompts, DEFAULT_PRICING
+        from open_uplift.surveys import seed_default_config
 
         db_path = tmp_path / "threadtest.db"
         conn = sqlite3.connect(str(db_path), check_same_thread=False)
@@ -161,7 +162,8 @@ class TestRunBatchJob:
         conn.execute("PRAGMA foreign_keys=ON")
         conn.row_factory = sqlite3.Row
         conn.executescript(SCHEMA_SQL)
-        _migrate_db(conn)
+        seed_default_config(conn)
+        _seed_default_prompts(conn)
         for model_name, prices in DEFAULT_PRICING.items():
             conn.execute(
                 """INSERT OR IGNORE INTO model_pricing
@@ -311,7 +313,8 @@ class TestBatchCancellation:
         """Thread-safe db for cancellation tests."""
         import sqlite3
         from contextlib import contextmanager
-        from open_uplift.db import SCHEMA_SQL, _migrate_db, DEFAULT_PRICING
+        from open_uplift.db import SCHEMA_SQL, _seed_default_prompts, DEFAULT_PRICING
+        from open_uplift.surveys import seed_default_config
 
         db_path = tmp_path / "cancel_test.db"
         conn = sqlite3.connect(str(db_path), check_same_thread=False)
@@ -319,7 +322,8 @@ class TestBatchCancellation:
         conn.execute("PRAGMA foreign_keys=ON")
         conn.row_factory = sqlite3.Row
         conn.executescript(SCHEMA_SQL)
-        _migrate_db(conn)
+        seed_default_config(conn)
+        _seed_default_prompts(conn)
         for model_name, prices in DEFAULT_PRICING.items():
             conn.execute(
                 """INSERT OR IGNORE INTO model_pricing
@@ -420,7 +424,8 @@ class TestJobWorker:
         """Thread-safe db for worker tests."""
         import sqlite3
         from contextlib import contextmanager
-        from open_uplift.db import SCHEMA_SQL, _migrate_db, DEFAULT_PRICING
+        from open_uplift.db import SCHEMA_SQL, _seed_default_prompts, DEFAULT_PRICING
+        from open_uplift.surveys import seed_default_config
 
         db_path = tmp_path / "worker_test.db"
         conn = sqlite3.connect(str(db_path), check_same_thread=False)
@@ -428,7 +433,8 @@ class TestJobWorker:
         conn.execute("PRAGMA foreign_keys=ON")
         conn.row_factory = sqlite3.Row
         conn.executescript(SCHEMA_SQL)
-        _migrate_db(conn)
+        seed_default_config(conn)
+        _seed_default_prompts(conn)
         for model_name, prices in DEFAULT_PRICING.items():
             conn.execute(
                 """INSERT OR IGNORE INTO model_pricing

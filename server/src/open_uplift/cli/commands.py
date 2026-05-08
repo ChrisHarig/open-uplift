@@ -62,6 +62,29 @@ def sync():
     )
 
 
+@cli.command("clear-results")
+@click.option("--yes", is_flag=True, help="Skip confirmation prompt")
+def clear_results(yes: bool):
+    """Wipe all evaluator outputs (compaction, judge, uplift) so they can be re-run."""
+    from open_uplift.db import get_db
+
+    if not yes:
+        click.echo(
+            "This will delete all rows from script_results, judge_outputs, and uplift_outputs.\n"
+            "Sessions, surveys, sharing config, and API keys are NOT touched.\n"
+        )
+        if not click.confirm("Proceed?", default=False):
+            click.echo("Aborted.")
+            return
+
+    init_db()
+    with get_db() as db:
+        sr = db.execute("DELETE FROM script_results").rowcount
+        jo = db.execute("DELETE FROM judge_outputs").rowcount
+        uo = db.execute("DELETE FROM uplift_outputs WHERE output_id = 'llm-judge'").rowcount
+    click.echo(f"Cleared {sr} script_results, {jo} judge_outputs, {uo} llm-judge uplift rows.")
+
+
 @cli.command()
 def explain():
     """Learn how Open Uplift measures engineering productivity."""

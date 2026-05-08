@@ -369,7 +369,7 @@ export default function Transcript() {
             onClick={() => setViewMode("raw")}
             disabled={!data}
           >
-            Raw
+            Full
           </button>
           <button
             className={`btn ${viewMode === "compacted" ? "" : "btn-secondary"}`}
@@ -385,7 +385,7 @@ export default function Transcript() {
           <button
             className="btn btn-secondary"
             onClick={() => setShowPrompt(!showPrompt)}
-            style={{ padding: "4px 10px", fontSize: 12 }}
+            style={{ padding: "6px 14px", fontSize: 12 }}
           >
             {showPrompt ? "Hide Prompt" : `Prompt: ${compactionPrompt.name}${compactionPrompt.version && compactionPrompt.version > 1 ? ` v${compactionPrompt.version}` : ""}`}
           </button>
@@ -393,7 +393,7 @@ export default function Transcript() {
 
         {viewMode === "raw" && data && (
           <>
-            <label className="toggle-row" style={{ display: "inline-flex" }}>
+            <label className="toggle-row toggle-row-inline">
               <span className="toggle-label">Show thinking</span>
               <div
                 className={`toggle ${showThinking ? "toggle-on" : ""}`}
@@ -402,7 +402,7 @@ export default function Transcript() {
                 <div className="toggle-knob" />
               </div>
             </label>
-            <label className="toggle-row" style={{ display: "inline-flex" }}>
+            <label className="toggle-row toggle-row-inline">
               <span className="toggle-label">Show tool details</span>
               <div
                 className={`toggle ${showToolDetails ? "toggle-on" : ""}`}
@@ -433,17 +433,28 @@ export default function Transcript() {
 
       {viewMode === "compacted" && compactedText ? (
         <div className="transcript-compacted">
-          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
-            <button
-              className="btn"
-              onClick={handleCompact}
-              disabled={compacting || compactionCurrent}
-              style={{ padding: "4px 10px", fontSize: 12 }}
-              title={compactionCurrent ? "Compaction is up to date (no new messages)" : undefined}
-            >
-              {compacting ? "Compacting..." : compactionCurrent ? "Up to date" : "Re-compact"}
-            </button>
+          <div className="compaction-status-row">
+            {compactionCurrent ? (
+              <span className="compaction-tag compaction-tag-fresh" title="Compaction is up to date (no new messages)">
+                <span aria-hidden="true">✓</span> Up to date
+              </span>
+            ) : (
+              <>
+                <span className="compaction-tag compaction-tag-stale" title="New messages have arrived since this compaction">
+                  <span aria-hidden="true">⚠</span> Out of date
+                </span>
+                <button
+                  className="btn"
+                  onClick={handleCompact}
+                  disabled={compacting}
+                  style={{ padding: "4px 10px", fontSize: 12 }}
+                >
+                  {compacting ? "Compacting..." : "Re-compact"}
+                </button>
+              </>
+            )}
           </div>
+          <div className="compaction-divider" />
           <div style={{ whiteSpace: "pre-wrap", fontSize: 14, lineHeight: 1.7 }}>
             {compactedText}
           </div>

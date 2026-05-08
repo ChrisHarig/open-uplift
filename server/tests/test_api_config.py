@@ -128,37 +128,6 @@ def test_put_script_config(app):
     assert data["judge"]["model"] == "gpt-4o"
 
 
-def test_get_llm_config(app):
-    """Backward-compat: legacy llm-config returns flat format."""
-    resp = app.get("/api/llm-config")
-    assert resp.status_code == 200
-    data = resp.get_json()
-    assert "judge_provider" in data
-    assert "compaction_provider" in data
-
-
-def test_put_llm_config(app):
-    """Backward-compat: legacy llm-config accepts flat, stores as nested."""
-    resp = app.put(
-        "/api/llm-config",
-        json={
-            "judge_provider": "openai",
-            "judge_model": "gpt-4o",
-        },
-    )
-    assert resp.status_code == 200
-
-    resp = app.get("/api/llm-config")
-    data = resp.get_json()
-    assert data["judge_provider"] == "openai"
-
-    # Verify it was stored as nested
-    resp = app.get("/api/script-config")
-    data = resp.get_json()
-    assert data["judge"]["provider"] == "openai"
-    assert data["judge"]["model"] == "gpt-4o"
-
-
 # ---- Transcript endpoint ----
 
 class TestTranscriptEndpoint:
